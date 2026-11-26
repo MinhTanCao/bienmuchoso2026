@@ -61,8 +61,8 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
     <input id="file" type="file" accept="application/pdf" multiple hidden>
   </div>
   <div class="bar">
-    <label><input type="checkbox" id="forceOcr"> Luôn dùng OCR</label>
-    <label><input type="checkbox" id="defGoc"> Tự đánh dấu x cột Bản gốc/Bản chính</label>
+    <label><input type="checkbox" id="forceOcr" checked> Luôn dùng OCR</label>
+    <label title="Có mộc đỏ hoặc chữ ký (mực xanh, chữ ký số) thì là Bản gốc/Bản chính, không có thì là Bản sao"><input type="checkbox" id="autoGoc" checked> Tự nhận bản gốc/bản sao theo mộc đỏ, chữ ký</label>
     <label>Trang bắt đầu <input type="number" id="startPage" value="1" min="1"></label>
     <label>Tác giả <select id="authMode" title="Cách ghi cột Tác giả"><option value="gop">Cơ quan ban hành + chủ quản trực tiếp</option><option value="last">Chỉ cơ quan ban hành</option><option value="all">Tất cả dòng đầu trang</option></select></label>
     <label><input type="checkbox" id="autoSort"> Sắp xếp theo ngày văn bản</label>
@@ -249,7 +249,7 @@ const TQ_LINE=new RegExp("^("+TQ+")\\b");
 const TQ_CUT=new RegExp("\\s+(?:"+TQ+")(?:\\s+[A-ZÀ-Ỹ0-9.,\\-()/]+)*\\s*$");
 function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
-  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:(($("defGoc")||{}).checked?"x":""),sao:"",mat:"",blocks:[],tq:""};
+  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:"",sao:"",mat:"",blocks:[],tq:""};
   const head=lines.slice(0,22);
   const soIdx=head.findIndex(l=>/S[ốoôóòỏ0]\s*[:;.]/i.test(l.text));
   const topAll=head.map(l=>l.text);
@@ -285,9 +285,11 @@ function parse(d){
       if(lines[j].it.some(x=>x.x>=cut||x.x+(x.w||0)>cut+8)) continue; // dòng trải dài sang cột phải = trích yếu của văn bản có tên loại
       if(/^(V\/v|V\/V|V\.v|Về việc)\b/i.test(t)){
         const parts=[t];
-        for(let k=j+1;k<Math.min(lines.length,j+3);k++){
+        for(let k=j+1;k<Math.min(lines.length,j+5);k++){
           const u=leftTxt(lines[k]);
-          if(!u||/^K[íi]nh g[ửu]i/i.test(u)||lines[k].y-lines[k-1].y>26) break;
+          // khoảng cách dòng tính theo cỡ chữ (không dùng số điểm cố định vì PDF scan có khổ trang rất khác nhau)
+          const hh=Math.max(lines[k].h||10,lines[k-1].h||10);
+          if(!u||/^K[íi]nh g[ửu]i/i.test(u)||lines[k].y-lines[k-1].y>2.6*hh) break;
           parts.push(u);
         }
         vv=parts.join(" ").replace(/\s+/g," ");cv=true;break;
@@ -341,6 +343,57 @@ function recomputeAuthors(){
   render();
 }
 
+// Phân loại màu điểm ảnh: 1 = đỏ (mộc), 2 = xanh (mực bút), 0 = khác
+function colorClass(r,g,b){
+  const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+  if(max<70||d<45) return 0;
+  if(d/max<0.3) return 0;
+  let h;
+  if(max===r) h=((g-b)/d+6)%6; else if(max===g) h=(b-r)/d+2; else h=(r-g)/d+4;
+  h*=60;
+  if((h<18||h>340)&&max>110) return 1;
+  if(h>195&&h<260) return 2;
+  return 0;
+}
+// Tìm cụm điểm ảnh cùng loại đủ lớn (mộc là một vòng tròn lớn; chữ ký là nét mực liền một vùng)
+function findCluster(cls,W,H,target,minPx,minW,minH){
+  const C=24,gw=Math.ceil(W/C),gh=Math.ceil(H/C),cnt=new Uint16Array(gw*gh);
+  for(let y=0;y<H;y++){const row=y*W,cy=((y/C)|0)*gw;for(let x=0;x<W;x++) if(cls[row+x]===target) cnt[cy+((x/C)|0)]++}
+  const seen=new Uint8Array(gw*gh);
+  for(let i=0;i<cnt.length;i++){
+    if(cnt[i]<8||seen[i]) continue;
+    const st=[i];seen[i]=1;let tot=0,x0=gw,x1=0,y0=gh,y1=0;
+    while(st.length){
+      const c=st.pop(),cx=c%gw,cy=(c/gw)|0;
+      tot+=cnt[c];if(cx<x0)x0=cx;if(cx>x1)x1=cx;if(cy<y0)y0=cy;if(cy>y1)y1=cy;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+        const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=gw||ny>=gh) continue;
+        const n=ny*gw+nx;if(!seen[n]&&cnt[n]>=8){seen[n]=1;st.push(n)}
+      }
+    }
+    if(tot>=minPx&&(x1-x0+1)*C>=minW&&(y1-y0+1)*C>=minH) return true;
+  }
+  return false;
+}
+// Kiểm tra mộc đỏ, chữ ký tươi (mực xanh), chữ ký số ở vài trang cuối (nơi ký tên, đóng dấu)
+async function analyzeSeal(pdf){
+  const res={red:false,blue:false,sig:false};
+  const n=pdf.numPages;
+  for(let p=Math.max(1,n-2);p<=n;p++){
+    const page=await pdf.getPage(p);
+    try{const an=await page.getAnnotations();if(an.some(a=>a.fieldType==="Sig"))res.sig=true}catch(e){}
+    if(res.red&&res.blue) continue;
+    const v0=page.getViewport({scale:1}),sc=1000/v0.width,v=page.getViewport({scale:sc});
+    const cv=document.createElement("canvas");cv.width=Math.floor(v.width);cv.height=Math.floor(v.height);
+    const cx=cv.getContext("2d",{willReadFrequently:true});cx.fillStyle="#fff";cx.fillRect(0,0,cv.width,cv.height);
+    await page.render({canvasContext:cx,viewport:v}).promise;
+    const dt=cx.getImageData(0,0,cv.width,cv.height).data,cls=new Uint8Array(cv.width*cv.height);
+    for(let i=0,j=0;i<dt.length;i+=4,j++) cls[j]=colorClass(dt[i],dt[i+1],dt[i+2]);
+    if(!res.red) res.red=findCluster(cls,cv.width,cv.height,1,900,70,70);
+    if(!res.blue) res.blue=findCluster(cls,cv.width,cv.height,2,450,50,20);
+  }
+  return res;
+}
 let files=[],fid=0;
 const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
 function renderFiles(){
@@ -367,7 +420,13 @@ async function processEntry(en,force){
     en.pages=pdf.numPages;
     const d=await extractItems(await pdf.getPage(1),force);
     en.mode=d.ocr?"OCR":"Lớp chữ";en.conf=d.conf;
-    const r={...parse(d),raw:toLines(d.items).slice(0,40).map(l=>l.text).join("\n"),pages:pdf.numPages,ocr:d.ocr,file:en.name,fid:en.id};
+    let seal=null;
+    if($("autoGoc").checked){try{seal=await analyzeSeal(pdf)}catch(e){console.error(e)}}
+    const r={...parse(d),seal,raw:toLines(d.items).slice(0,40).map(l=>l.text).join("\n"),pages:pdf.numPages,ocr:d.ocr,file:en.name,fid:en.id};
+    if(seal&&r.sao!=="x"){ // văn bản có chữ "SAO Y/SAO LỤC/TRÍCH SAO" luôn là bản sao
+      if(seal.red||seal.blue||seal.sig){r.goc="x";r.sao=""} else {r.goc="";r.sao="x"}
+    }
+    if(seal) r.raw="Mộc đỏ: "+(seal.red?"có":"không")+" | Chữ ký tươi (mực xanh): "+(seal.blue?"có":"không")+" | Chữ ký số: "+(seal.sig?"có":"không")+"\n\n"+r.raw;
     const i=rows.findIndex(x=>x.fid===en.id);
     if(i>=0) rows[i]={...rows[i],...r};
     else rows.push({ghichu:"",...r});
@@ -419,7 +478,7 @@ function render(){
       <td class="act"><button title="Lên" data-a="up">↑</button> <button title="Xuống" data-a="dn">↓</button> <button title="Xem chữ đọc được" data-a="raw">Xem</button> <button title="Xóa dòng" data-a="del">✕</button></td>`;
     const set=(k,v)=>{tr.querySelector(`[data-k="${k}"]`).value=v||""};
     set("so",r.so);set("ngay",r.ngay);set("tieude",r.tieude);set("tacgia",r.tacgia);set("goc",r.goc);set("sao",r.sao);set("mat",r.mat);set("pg",r.pgOverride||rg[i]);set("ghichu",r.ghichu);
-    if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"")+(r.tq?"\nThẩm quyền ban hành: "+r.tq:"");
+    if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"")+(r.tq?"\nThẩm quyền ban hành: "+r.tq:"")+(r.seal?"\nMộc đỏ: "+(r.seal.red?"có":"không")+"; chữ ký tươi: "+(r.seal.blue?"có":"không")+"; chữ ký số: "+(r.seal.sig?"có":"không"):"");
     ["so","ngay","tieude"].forEach(k=>{if(!r[k]) tr.querySelector(`[data-k="${k}"]`).parentElement.classList.add("miss")});
     b.appendChild(tr);
   });
