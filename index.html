@@ -108,7 +108,7 @@ const $=id=>document.getElementById(id);
 let rows=[];
 let ocrWorker=null;
 
-const TYPES=["BÁO CÁO","QUYẾT ĐỊNH","KẾ HOẠCH","THÔNG BÁO","TỜ TRÌNH","BIÊN BẢN","CHƯƠNG TRÌNH","NGHỊ QUYẾT","HƯỚNG DẪN","GIẤY MỜI","THƯ MỜI","QUY CHẾ","QUY ĐỊNH","CÔNG ĐIỆN","GIẤY GIỚI THIỆU","GIẤY ỦY QUYỀN","THÔNG TƯ","NGHỊ ĐỊNH","CHỈ THỊ","KẾT LUẬN","ĐỀ ÁN","DỰ ÁN","PHƯƠNG ÁN","DANH SÁCH","GIẤY CHỨNG NHẬN","HỢP ĐỒNG","BẢN GHI NHỚ","THỎA THUẬN"];
+const TYPES=["BÁO CÁO","QUYẾT ĐỊNH","KẾ HOẠCH","THÔNG BÁO","TỜ TRÌNH","BIÊN BẢN","CHƯƠNG TRÌNH","NGHỊ QUYẾT","HƯỚNG DẪN","GIẤY MỜI","THƯ MỜI","QUY CHẾ","QUY ĐỊNH","CÔNG ĐIỆN","GIẤY GIỚI THIỆU","GIẤY ỦY QUYỀN","THÔNG TƯ","NGHỊ ĐỊNH","CHỈ THỊ","KẾT LUẬN","ĐỀ ÁN","DỰ ÁN","PHƯƠNG ÁN","DANH SÁCH","GIẤY CHỨNG NHẬN","HỢP ĐỒNG","BẢN GHI NHỚ","THỎA THUẬN","LUẬT","BỘ LUẬT","PHÁP LỆNH","LỆNH","THÔNG CÁO","PHIẾU GỬI","PHIẾU CHUYỂN","PHIẾU BÁO"];
 const cap=s=>s.charAt(0)+s.slice(1).toLowerCase();
 function setStatus(t){$("status").textContent=t}
 
@@ -150,7 +150,7 @@ async function extractItems(page,force){
   let items=[];
   if(!force){
     const tc=await page.getTextContent();
-    items=tc.items.filter(i=>i.str.trim()).map(i=>({t:i.str.normalize("NFC"),x:i.transform[4],y:vp.height-i.transform[5]}));
+    items=tc.items.filter(i=>i.str.trim()).map(i=>({t:i.str.normalize("NFC"),x:i.transform[4],y:vp.height-i.transform[5],w:i.width,h:i.height||Math.abs(i.transform[3])||10}));
   }
   const chars=items.reduce((n,i)=>n+i.t.length,0);
   if(force||chars<40){
@@ -159,19 +159,36 @@ async function extractItems(page,force){
     const w=await getOcr();
     const r=await w.recognize(cv);
     items=[];
-    (r.data.words||[]).forEach(x=>{if(x.text.trim())items.push({t:x.text.normalize("NFC"),x:x.bbox.x0/sc,y:x.bbox.y0/sc})});
+    (r.data.words||[]).forEach(x=>{if(x.text.trim())items.push({t:x.text.normalize("NFC"),x:x.bbox.x0/sc,y:(x.bbox.y0+x.bbox.y1)/2/sc,w:(x.bbox.x1-x.bbox.x0)/sc,h:(x.bbox.y1-x.bbox.y0)/sc})});
     if(!items.length) (r.data.text||"").split("\n").forEach((ln,i)=>{if(ln.trim())items.push({t:ln.normalize("NFC"),x:0,y:i*14})});
     return {items,W:vp.width,ocr:true,conf:Math.round(r.data.confidence||0)};
   }
   return {items,W:vp.width,ocr:false};
 }
-function toLines(items,tol=5){
+// Ghép các mảnh chữ trong cùng một dòng: chỉ thêm dấu cách khi khoảng hở giữa hai mảnh đủ lớn
+// (nhiều PDF cắt một từ thành nhiều mảnh, ví dụ "ph" + "ố")
+function joinItems(arr){
+  let out="",prev=null;
+  for(const i of arr){
+    if(prev){
+      const known=prev.w>0&&i.h>0;
+      const gap=i.x-(prev.x+prev.w);
+      const sp=!known||gap>Math.max(1,0.2*i.h);
+      if(sp&&!/\s$/.test(out)&&!/^\s/.test(i.t)) out+=" ";
+    }
+    out+=i.t;prev=i;
+  }
+  return out.replace(/\s+/g," ").trim();
+}
+function toLines(items){
   const s=[...items].sort((a,b)=>a.y-b.y||a.x-b.x), L=[];
   s.forEach(i=>{
-    const l=L.find(l=>Math.abs(l.y-i.y)<=tol);
-    if(l){l.it.push(i)}else L.push({y:i.y,it:[i]});
+    const h=i.h||10;
+    let best=null,bd=1e9;
+    L.forEach(l=>{const d=Math.abs(l.y-i.y);if(d<=Math.max(2.5,0.5*Math.min(h,l.h||h))&&d<bd){best=l;bd=d}});
+    if(best){best.it.push(i);best.n++;best.y=(best.y*(best.n-1)+i.y)/best.n}else L.push({y:i.y,h,n:1,it:[i]});
   });
-  L.forEach(l=>{l.it.sort((a,b)=>a.x-b.x);l.text=l.it.map(i=>i.t).join(" ").replace(/\s+/g," ").trim()});
+  L.forEach(l=>{l.it.sort((a,b)=>a.x-b.x);l.text=joinItems(l.it)});
   return L.sort((a,b)=>a.y-b.y);
 }
 const ACR=["UBND","HĐND","LHPN","TW","TP","BCH","BTV","UBMTTQ","MTTQ","CHXHCN","VN","TNCS","HCM","TTCP","CP","BGDĐT","BCĐ","ĐCSVN","QĐ","TT","NĐ","VP","HĐ","TAND","VKSND","CA","BCA","BQP","TU","ĐU","CB","CBCC","VC","NLĐ","KH","SNV","SGDĐT","SYT","SKHĐT","STC","STNMT","THPT","THCS","TH","MN","UB"];
@@ -197,7 +214,7 @@ function colCut(lines,W){
 function authorBlocks(lines,soIdx,cut){
   const raw=[];
   for(let i=0;i<soIdx;i++){
-    const t=lines[i].it.filter(x=>x.x<cut).map(x=>x.t).join(" ").replace(/\s+/g," ").trim();
+    const t=joinItems(lines[i].it.filter(x=>x.x<cut));
     if(!t||/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_.\s]+$/i.test(t)||/^(MẬT|TỐI MẬT|TUYỆT MẬT)$/i.test(t)||/^(SAO Y|SAO LỤC|TRÍCH SAO)/i.test(t)) continue;
     raw.push(t);
   }
@@ -242,7 +259,7 @@ function parse(d){
   const cut=colCut(lines,d.W);
   // tên loại văn bản (có tên loại: chỉ thị, quy chế, thông báo, kế hoạch, báo cáo, tờ trình, quyết định, nghị quyết...)
   let ti=-1,tp="";
-  for(let i=Math.max(soIdx,0);i<lines.length;i++){
+  for(let i=soIdx>=0?soIdx+1:0;i<lines.length;i++){
     const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").replace(/\s+/g," ").trim();
     const hit=TYPES.find(k=>t===k||(t.startsWith(k+" ")&&lines[i].it.length<=6));
     if(hit){ti=i;tp=hit;break}
@@ -251,7 +268,7 @@ function parse(d){
   // công văn: không có tên loại, có "V/v ..." ở dưới số ký hiệu và "Kính gửi"
   let cv=false,vv="";
   if(ti<0){
-    const leftTxt=l=>l.it.filter(x=>x.x<cut).map(x=>x.t).join(" ").trim();
+    const leftTxt=l=>joinItems(l.it.filter(x=>x.x<cut));
     for(let j=Math.max(soIdx,0);j<Math.min(lines.length,Math.max(soIdx,0)+7);j++){
       const t=leftTxt(lines[j]);
       if(/^(V\/v|V\/V|V\.v|Về việc)\b/i.test(t)){
@@ -276,7 +293,7 @@ function parse(d){
   // tên loại + trích yếu
   if(ti>=0){
     const parts=[];
-    const rest=lines[ti].it.map(x=>x.t).join(" ").replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").replace(/^[\s:.\-–]+/,"").trim();
+    const rest=lines[ti].text.replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").replace(/^[\s:.\-–]+/,"").trim();
     if(rest) parts.push(rest);
     for(let i=ti+1;i<lines.length&&parts.length<6;i++){
       const t=lines[i].text.trim();
@@ -288,6 +305,7 @@ function parse(d){
     }
     let tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").replace(/^\((.*)\)$/,"$1").trim();
     if(parts.length&&!isUp(parts[0])){const c=tr.match(TQ_CUT);if(c){out.tq=c[0].trim();tr=tr.slice(0,c.index).trim()}}
+    if(tr&&isUp(tr)) tr=tr.charAt(0)+tr.slice(1).toLowerCase();
     out.tieude=compose(tp,tr);
   } else if(cv){
     out.tieude=compose("CÔNG VĂN",vv);
