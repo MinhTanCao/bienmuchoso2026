@@ -204,11 +204,15 @@ function nice(s){
     return w.charAt(0)+w.slice(1).toLowerCase();
   }).join(" ");
 }
+const fold=x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[đĐ]/g,"D").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
+function lev(a,b){const m=a.length,n=b.length,d=[];for(let i=0;i<=m;i++){d[i]=[i];for(let j=1;j<=n;j++)d[i][j]=i?0:j}
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n]}
+let FT=null;
 const CONN=/(\bVÀ|\bCỦA|\bTHỊ|\bTẠI|\bVỀ|\bĐỂ|\bVỚI|,)$/i;
 const isUp=t=>t===t.toUpperCase()&&/[A-ZÀ-Ỹ]{2}/.test(t);
 const lowFirst=t=>t.charAt(0).toLowerCase()+t.slice(1);
 function colCut(lines,W){
-  for(let i=0;i<Math.min(lines.length,14);i++){const c=lines[i].it.find(x=>/^C[ỘO]NG$/i.test(x.t));if(c) return c.x-3}
+  for(let i=0;i<Math.min(lines.length,14);i++){const c=lines[i].it.find(x=>/^C[ỘO]NG(\s|$)/i.test(x.t.trim()));if(c) return c.x-3}
   return W*0.5;
 }
 // Các khối tên cơ quan ở góc trái trên cùng (trên dòng "Số:"), gộp dòng bị xuống hàng
@@ -259,11 +263,17 @@ function parse(d){
   if(m) out.so=m[1].replace(/\s+/g,"");
   const cut=colCut(lines,d.W);
   // tên loại văn bản (có tên loại: chỉ thị, quy chế, thông báo, kế hoạch, báo cáo, tờ trình, quyết định, nghị quyết...)
-  let ti=-1,tp="";
+  let ti=-1,tp="",restTxt="";
+  if(!FT) FT=TYPES.map(k=>({k,f:fold(k),n:k.split(" ").length}));
   for(let i=soIdx>=0?soIdx+1:0;i<lines.length;i++){
-    const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").replace(/\s+/g," ").trim();
-    const hit=TYPES.find(k=>t===k||(t.startsWith(k+" ")&&lines[i].it.length<=6));
-    if(hit){ti=i;tp=hit;break}
+    const f=fold(lines[i].text);
+    let hit=null,rest="";
+    for(const o of FT){
+      if(f===o.f){hit=o;break}
+      if(f.startsWith(o.f+" ")&&lines[i].it.length<=6){hit=o;rest=lines[i].text.split(" ").slice(o.n).join(" ");break}
+      if(o.f.length>=8&&Math.abs(f.length-o.f.length)<=1&&lev(f,o.f)<=1){hit=o;break}
+    }
+    if(hit){ti=i;tp=hit.k;restTxt=rest;break}
     if(/^C[ăa]n c[ứu]/i.test(lines[i].text)) break;
   }
   // công văn: không có tên loại, có "V/v ..." ở dưới số ký hiệu và "Kính gửi"
@@ -272,6 +282,7 @@ function parse(d){
     const leftTxt=l=>joinItems(l.it.filter(x=>x.x<cut));
     for(let j=Math.max(soIdx,0);j<Math.min(lines.length,Math.max(soIdx,0)+7);j++){
       const t=leftTxt(lines[j]);
+      if(lines[j].it.some(x=>x.x>=cut||x.x+(x.w||0)>cut+8)) continue; // dòng trải dài sang cột phải = trích yếu của văn bản có tên loại
       if(/^(V\/v|V\/V|V\.v|Về việc)\b/i.test(t)){
         const parts=[t];
         for(let k=j+1;k<Math.min(lines.length,j+3);k++){
@@ -291,10 +302,16 @@ function parse(d){
   if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
   // tác giả
   if(soIdx>0){out.blocks=authorBlocks(lines,soIdx,cut);out.tacgia=authorFrom(out.blocks,($("authMode")||{}).value||"gop")}
+  if(ti<0&&!cv){
+    for(let i=Math.max(soIdx,0)+1;i<Math.min(lines.length,Math.max(soIdx,0)+10);i++){
+      const tx=lines[i].text.trim();
+      if(tx&&isUp(tx)&&tx.split(" ").length<=4&&!/C[ỘO]NG|K[ÍI]NH G[ỬU]I|S[ỐO]\s*:/.test(tx)&&!lines[i].it.some(x=>x.x<cut&&i<=Math.max(soIdx,0)+1&&lines[i].it.length>5)){ti=i;tp=tx;restTxt="";break}
+    }
+  }
   // tên loại + trích yếu
   if(ti>=0){
     const parts=[];
-    const rest=lines[ti].text.replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").replace(/^[\s:.\-–]+/,"").trim();
+    const rest=restTxt.replace(/^[\s:.\-–]+/,"").trim();
     if(rest) parts.push(rest);
     for(let i=ti+1;i<lines.length&&parts.length<6;i++){
       const t=lines[i].text.trim();
