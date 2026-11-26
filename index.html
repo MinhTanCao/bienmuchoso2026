@@ -6,7 +6,7 @@
 <title>Biên mục văn bản từ PDF</title>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#eceff2;--card:#fff;--ink:#1c2630;--mut:#5d6b78;--line:#b9c2cb;--acc:#0e6670;--acc2:#0a4d55;--warn:#fff3d6;--err:#b3261e}
+:root{color-scheme:light;--bg:#eceff2;--card:#fff;--ink:#1c2630;--mut:#5d6b78;--line:#b9c2cb;--acc:#0e6670;--acc2:#0a4d55;--warn:#fff3d6;--err:#b3261e}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Be Vietnam Pro",system-ui,sans-serif}
 header{padding:20px 28px 8px}
@@ -26,17 +26,26 @@ button.g:hover{background:#f1f4f6}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7cc4cc;outline-offset:1px}
 #status{font-size:14px;color:var(--mut);min-height:22px}
 .wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
-table{border-collapse:collapse;width:100%;min-width:1000px;table-layout:fixed;font-family:"Times New Roman",Times,serif;font-size:15px}
-th,td{border:1px solid #444;padding:4px 6px;vertical-align:middle}
-th{background:#f3f5f7;text-align:center;font-weight:700}
-tr.idx td{text-align:center;font-style:italic;background:#fafbfc;padding:2px}
+table{background:#fff;color:#000;border-collapse:collapse;width:100%;min-width:1000px;table-layout:fixed;font-family:"Times New Roman",Times,serif;font-size:15px}
+th,td{border:1px solid #000;padding:4px 6px;vertical-align:middle}
+th{background:#fff;color:#000;text-align:center;font-weight:700;font-size:16px;line-height:1.3;height:64px}
+tr.idx td{text-align:center;font-weight:700;background:#fff;color:#000;padding:2px;height:26px}
 td.c{text-align:center}
-td input,td textarea,td select{width:100%;border:0;background:transparent;font:inherit;padding:3px;resize:vertical}
-td textarea{min-height:48px}
-tr.chk td{background:var(--warn)}
+td input,td textarea,td select{width:100%;border:0;background:transparent;color:#000;font:inherit;padding:3px;resize:vertical}
+td textarea{min-height:60px}
+td.miss{background:var(--warn)}
 td.act{white-space:nowrap;width:1%;border:0;background:var(--card)}
 td.act button{padding:3px 8px;background:#fff;color:var(--ink);border:1px solid var(--line)}
 .flag{color:var(--err);font:12px "Be Vietnam Pro",sans-serif}
+dialog{max-width:760px;width:92%;border:1px solid var(--line);border-radius:10px}dialog pre{white-space:pre-wrap;font:13px/1.5 monospace;max-height:55vh;overflow:auto;background:#f5f7f8;padding:10px;border-radius:6px}
+#fileBox{margin:0 0 16px}
+#fileBox h2{font-size:16px;margin:0 0 8px}
+#ft{font-family:"Be Vietnam Pro",system-ui,sans-serif;font-size:14px;min-width:0;table-layout:auto}
+#ft th{height:auto;font-size:14px;background:#f3f5f7;text-align:left;padding:6px 8px}
+#ft td{padding:6px 8px;border-color:var(--line)}
+#ft td.n{word-break:break-all}
+#ft button{padding:3px 9px;font-size:13px;margin-right:4px}
+.st-ok{color:#1b6e3c}.st-err{color:var(--err)}.st-run{color:var(--acc)}
 .empty{padding:26px;text-align:center;color:var(--mut)}
 details{margin-top:18px;color:var(--mut);font-size:14px}
 </style>
@@ -63,9 +72,13 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
     <button class="g" id="clear">Xóa hết</button>
   </div>
   <div id="status" role="status"></div>
+  <section id="fileBox" hidden>
+    <h2>Danh sách file đã tải lên (<span id="fcount">0</span>)</h2>
+    <div class="wrap"><table id="ft"><thead><tr><th>#</th><th>Tên file</th><th>Dung lượng</th><th>Số trang</th><th>Cách đọc</th><th>Trạng thái</th><th></th></tr></thead><tbody id="fbody"></tbody></table></div>
+  </section>
   <div class="wrap">
     <table id="tbl">
-      <colgroup><col style="width:46px"><col style="width:130px"><col style="width:105px"><col><col style="width:190px"><col style="width:72px"><col style="width:60px"><col style="width:85px"><col style="width:72px"><col style="width:120px"><col style="width:96px"></colgroup>
+      <colgroup><col style="width:46px"><col style="width:130px"><col style="width:105px"><col><col style="width:190px"><col style="width:72px"><col style="width:60px"><col style="width:85px"><col style="width:72px"><col style="width:120px"><col style="width:130px"></colgroup>
       <thead>
         <tr>
           <th>Stt</th><th>Số, ký hiệu văn bản</th><th>Ngày tháng văn bản</th>
@@ -83,6 +96,7 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
     <p>Kết quả nhận dạng là gợi ý, nhất là với bản scan mờ. Các dòng nền vàng là dòng thiếu số, ngày hoặc trích yếu, cần kiểm tra lại. Cột “Trang số” tính theo thứ tự các dòng trong bảng, bắt đầu từ số trang bạn nhập; bấm “Tính lại số trang” sau khi đổi thứ tự hoặc sửa số trang của file.</p>
   </details>
 </main>
+<dialog id="dlg"><p style="margin-top:0"><b>Chữ đọc được từ trang đầu</b> (mỗi dòng là một dòng văn bản; dùng để đối chiếu khi nhận diện sai)</p><pre id="rawTxt"></pre><form method="dialog"><button>Đóng</button></form></dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
@@ -97,6 +111,39 @@ const TYPES=["BÁO CÁO","QUYẾT ĐỊNH","KẾ HOẠCH","THÔNG BÁO","TỜ TR
 const cap=s=>s.charAt(0)+s.slice(1).toLowerCase();
 function setStatus(t){$("status").textContent=t}
 
+const VI_ST={"loading tesseract core":"tải bộ nhận dạng","initializing tesseract":"khởi tạo","loading language traineddata":"tải dữ liệu tiếng Việt","initializing api":"khởi tạo","recognizing text":"đang nhận dạng"};
+async function getOcr(){
+  if(ocrWorker) return ocrWorker;
+  const logger=m=>{if(m&&m.status) setStatus("OCR: "+(VI_ST[m.status]||m.status)+(typeof m.progress==="number"?" "+Math.round(m.progress*100)+"%":""))};
+  const tryMake=async opt=>Tesseract.createWorker("vie",1,{...opt,logger});
+  try{ocrWorker=await tryMake({langPath:"https://tessdata.projectnaptha.com/4.0.0_best"})}
+  catch(e1){
+    try{ocrWorker=await tryMake({})}
+    catch(e2){throw new Error("OCR không chạy được (có thể do khung xem trước chặn Web Worker hoặc mạng chặn tải dữ liệu tiếng Việt). Chi tiết: "+((e2&&e2.message)||e2))}
+  }
+  try{await ocrWorker.setParameters({preserve_interword_spaces:"1",user_defined_dpi:"300"})}catch(e){}
+  return ocrWorker;
+}
+// Vẽ phần đầu trang 1 ở độ phân giải cao, chuyển xám + kéo giãn tương phản để OCR tiếng Việt chính xác hơn
+async function pageToCanvas(page,sc,cropTop){
+  const v=page.getViewport({scale:sc});
+  const full=document.createElement("canvas");full.width=Math.floor(v.width);full.height=Math.floor(v.height);
+  const fx=full.getContext("2d");fx.fillStyle="#fff";fx.fillRect(0,0,full.width,full.height);
+  await page.render({canvasContext:fx,viewport:v}).promise;
+  const h=Math.floor(full.height*cropTop);
+  const cv=document.createElement("canvas");cv.width=full.width;cv.height=h;
+  const cx=cv.getContext("2d");cx.drawImage(full,0,0,full.width,h,0,0,full.width,h);
+  const im=cx.getImageData(0,0,cv.width,h),dt=im.data,hist=new Uint32Array(256);
+  for(let i=0;i<dt.length;i+=4){const g=Math.round(.299*dt[i]+.587*dt[i+1]+.114*dt[i+2]);dt[i]=dt[i+1]=dt[i+2]=g;hist[g]++}
+  const tot=cv.width*h;let c=0,lo=0,hi=255;
+  for(let g=0;g<256;g++){c+=hist[g];if(c>tot*0.01){lo=g;break}}
+  c=0;for(let g=255;g>=0;g--){c+=hist[g];if(c>tot*0.12){hi=g;break}}
+  if(hi-lo<40){lo=0;hi=255}
+  const k=255/(hi-lo);
+  for(let i=0;i<dt.length;i+=4){let g=(dt[i]-lo)*k;g=g<0?0:g>255?255:g;dt[i]=dt[i+1]=dt[i+2]=g}
+  cx.putImageData(im,0,0);
+  return cv;
+}
 async function extractItems(page,force){
   const vp=page.getViewport({scale:1});
   let items=[];
@@ -106,18 +153,14 @@ async function extractItems(page,force){
   }
   const chars=items.reduce((n,i)=>n+i.t.length,0);
   if(force||chars<40){
-    setStatus("Đang nhận dạng chữ (OCR). Lần đầu có thể mất vài chục giây để tải dữ liệu tiếng Việt…");
-    const sc=2.2, v=page.getViewport({scale:sc});
-    const cv=document.createElement("canvas");cv.width=v.width;cv.height=v.height;
-    await page.render({canvasContext:cv.getContext("2d"),viewport:v}).promise;
-    if(!ocrWorker){
-      try{ocrWorker=await Tesseract.createWorker("vie")}
-      catch(e){throw new Error("OCR không chạy được ở khung xem trước (bị chặn Web Worker). Hãy tải file về và mở trên máy hoặc máy chủ nội bộ. Chi tiết: "+((e&&e.message)||e))}
-    }
-    const r=await ocrWorker.recognize(cv);
+    setStatus("Đang chuẩn bị OCR tiếng Việt… lần đầu có thể mất vài chục giây để tải dữ liệu.");
+    const sc=4, cv=await pageToCanvas(page,sc,0.6);
+    const w=await getOcr();
+    const r=await w.recognize(cv);
     items=[];
-    (r.data.words||[]).forEach(w=>{if(w.text.trim())items.push({t:w.text.normalize("NFC"),x:w.bbox.x0/sc,y:w.bbox.y0/sc})});
-    return {items,W:vp.width,ocr:true};
+    (r.data.words||[]).forEach(x=>{if(x.text.trim())items.push({t:x.text.normalize("NFC"),x:x.bbox.x0/sc,y:x.bbox.y0/sc})});
+    if(!items.length) (r.data.text||"").split("\n").forEach((ln,i)=>{if(ln.trim())items.push({t:ln.normalize("NFC"),x:0,y:i*14})});
+    return {items,W:vp.width,ocr:true,conf:Math.round(r.data.confidence||0)};
   }
   return {items,W:vp.width,ocr:false};
 }
@@ -146,9 +189,10 @@ function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
   const out={so:"",ngay:"",tieude:"",tacgia:""};
   const head=lines.slice(0,18);
-  const soIdx=head.findIndex(l=>/S[ốo]\s*:/i.test(l.text));
+  const soIdx=head.findIndex(l=>/S[ốoôóòỏ0]\s*[:;.]/i.test(l.text));
   // số ký hiệu
-  let m=(soIdx>=0?head[soIdx].text:full).match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i)||full.match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i);
+  const SOR=/S[ốoôóòỏ0]\s*[:;.]?\s*(\d+(?:\s*\/\s*[\w.ĐđÀ-ỹ]+)+(?:\s*-\s*[\w.ĐđÀ-ỹ]+)*|\d+\s*-\s*[\w.ĐđÀ-ỹ]+)/i;
+  let m=(soIdx>=0?head[soIdx].text:full).match(SOR)||full.match(SOR);
   if(m) out.so=m[1].replace(/\s+/g,"");
   // tên loại
   let ti=-1,tp="";
@@ -158,10 +202,16 @@ function parse(d){
     if(hit){ti=i;tp=hit;break}
     if(/^C[ăa]n c[ứu]/i.test(lines[i].text)) break;
   }
+  if(ti<0){
+    for(let i=Math.max(soIdx,0)+1;i<Math.min(lines.length,soIdx+10);i++){
+      const tx=lines[i].text.trim();
+      if(tx&&tx===tx.toUpperCase()&&/[A-ZÀ-Ỹ]{3}/.test(tx)&&tx.split(" ").length<=4&&!/C[ỘO]NG|K[ÍI]NH G[ỬU]I|S[ỐO]\s*:|^[-–—_\s]+$/.test(tx)&&!lines[i].it.some(x=>x.x<d.W*0.3&&i<=soIdx+2&&lines[i].it[0].x<d.W*0.3&&tx.length>12)){ti=i;tp=tx;break}
+    }
+  }
   // ngày ban hành: chỉ tìm ở phần đầu văn bản (trước tên loại / "Căn cứ"), tránh lấy ngày của văn bản được dẫn chiếu
   let lim=ti>=0?ti+1:Math.min(lines.length,(soIdx>=0?soIdx:0)+8);
   const topText=lines.slice(0,Math.max(lim,3)).map(l=>l.text).join("\n");
-  m=topText.match(/ng[àa]y\s+(\d{1,2})\s+th[áa]ng\s+(\d{1,2})\s+n[ăa]m\s+(\d{4})/i)||topText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  m=topText.match(/ng[àaáảã]y\s*(\d{1,2})\s*th[áaàảã]ng\s*(\d{1,2})\s*n[ăaâằắ]m\s*(\d{4})/i)||topText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
   // tác giả: cột trái, các dòng phía trên dòng "Số"; ranh giới cột = vị trí chữ "CỘNG" nếu có
   if(soIdx>0){
@@ -197,25 +247,57 @@ function parse(d){
   return out;
 }
 
-async function handleFiles(files){
-  const force=$("forceOcr").checked;
-  for(const f of files){
+let files=[],fid=0;
+const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
+function renderFiles(){
+  const tb=$("fbody");tb.innerHTML="";
+  $("fileBox").hidden=!files.length;$("fcount").textContent=files.length;
+  files.forEach((en,i)=>{
+    const tr=document.createElement("tr");
+    const cell=(t,cls)=>{const td=document.createElement("td");td.textContent=t;if(cls)td.className=cls;tr.appendChild(td);return td};
+    cell(i+1);cell(en.name,"n");cell(fmtSize(en.file.size));cell(en.pages||"–");
+    cell(en.mode?en.mode+(en.conf?" ("+en.conf+"%)":""):"–");
+    const st=cell(en.status,/^Lỗi/.test(en.status)?"st-err":/^Đã/.test(en.status)?"st-ok":"st-run");
+    const act=document.createElement("td");
+    const mk=(txt,fn,cls)=>{const b=document.createElement("button");b.textContent=txt;b.className="g";b.onclick=fn;act.appendChild(b)};
+    mk("Mở PDF",()=>window.open(URL.createObjectURL(en.file),"_blank"));
+    mk("Quét lại bằng OCR",()=>processEntry(en,true));
+    mk("Xóa",()=>{files=files.filter(x=>x!==en);rows=rows.filter(r=>r.fid!==en.id);renderFiles();render()});
+    tr.appendChild(act);tb.appendChild(tr);
+  });
+}
+async function processEntry(en,force){
+  en.status="Đang đọc…";renderFiles();
+  try{
+    const pdf=await pdfjsLib.getDocument({data:await en.file.arrayBuffer()}).promise;
+    en.pages=pdf.numPages;
+    const d=await extractItems(await pdf.getPage(1),force);
+    en.mode=d.ocr?"OCR":"Lớp chữ";en.conf=d.conf;
+    const r={...parse(d),raw:toLines(d.items).slice(0,40).map(l=>l.text).join("\n"),pages:pdf.numPages,ocr:d.ocr,file:en.name,fid:en.id};
+    const i=rows.findIndex(x=>x.fid===en.id);
+    if(i>=0) rows[i]={...rows[i],...r};
+    else rows.push({...r,goc:"x",sao:"",mat:"",ghichu:""});
+    en.status="Đã đọc";
+  }catch(e){
+    en.status="Lỗi: "+((e&&e.message)||e);
+    setStatus("Lỗi khi đọc "+en.name+": "+((e&&e.message)||e));
+    console.error(e);
+    if(!rows.some(x=>x.fid===en.id)) rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:en.pages||1,ghichu:"",file:en.name,fid:en.id});
+  }
+  renderFiles();render();
+}
+async function handleFiles(list){
+  const force=$("forceOcr").checked;let n=0;
+  for(const f of list){
     if(!/\.pdf$/i.test(f.name)&&f.type!=="application/pdf") continue;
-    try{
-      setStatus("Đang đọc: "+f.name);
-      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
-      const d=await extractItems(await pdf.getPage(1),force);
-      rows.push({...parse(d),goc:"x",sao:"",mat:"",pages:pdf.numPages,ghichu:"",ocr:d.ocr,file:f.name});
-    }catch(e){
-      rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:"Lỗi: "+((e&&e.message)||e),file:f.name});
-      setStatus("Lỗi khi đọc "+f.name+": "+((e&&e.message)||e));
-      console.error(e);
-    }
-    render();
+    if(files.some(x=>x.name===f.name&&x.file.size===f.size)){setStatus("Bỏ qua file đã tải lên: "+f.name);continue}
+    const en={id:++fid,file:f,name:f.name,status:"Chờ xử lý",pages:0};
+    files.push(en);renderFiles();
+    await processEntry(en,force);n++;
   }
   if($("autoSort").checked) sortByDate();
   render();
-  setStatus("Đã xử lý xong "+files.length+" file. Hãy kiểm tra các dòng nền vàng.");
+  if(n) setStatus("Đã xử lý xong "+n+" file. Hãy kiểm tra các ô tô vàng.");
 }
 
 function dateKey(s){const m=(s||"").match(/(\d+)\/(\d+)\/(\d+)/);return m?+m[3]*10000+ +m[2]*100+ +m[1]:99999999}
@@ -230,7 +312,6 @@ function render(){
   rows.forEach((r,i)=>{
     const tr=document.createElement("tr");
     const bad=!r.so||!r.ngay||!r.tieude;
-    if(bad) tr.className="chk";
     tr.innerHTML=`<td class="c">${String(i+1).padStart(2,"0")}</td>
       <td><input data-k="so"></td>
       <td class="c"><input data-k="ngay" style="text-align:center"></td>
@@ -240,13 +321,12 @@ function render(){
       <td class="c"><input data-k="sao" style="text-align:center"></td>
       <td class="c"><select data-k="mat"><option></option><option>Mật</option><option>Tối mật</option><option>Tuyệt mật</option></select></td>
       <td class="c"><input data-k="pg" style="text-align:center"></td>
-      <td><textarea data-k="ghichu" rows="2"></textarea><div class="flag"></div></td>
-      <td class="act"><button title="Lên" data-a="up">↑</button> <button title="Xuống" data-a="dn">↓</button> <button title="Xóa dòng" data-a="del">✕</button></td>`;
+      <td><textarea data-k="ghichu" rows="2"></textarea></td>
+      <td class="act"><button title="Lên" data-a="up">↑</button> <button title="Xuống" data-a="dn">↓</button> <button title="Xem chữ đọc được" data-a="raw">Xem</button> <button title="Xóa dòng" data-a="del">✕</button></td>`;
     const set=(k,v)=>{tr.querySelector(`[data-k="${k}"]`).value=v||""};
     set("so",r.so);set("ngay",r.ngay);set("tieude",r.tieude);set("tacgia",r.tacgia);set("goc",r.goc);set("sao",r.sao);set("mat",r.mat);set("pg",r.pgOverride||rg[i]);set("ghichu",r.ghichu);
-    const fl=tr.querySelector(".flag");
     if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"");
-    if(bad) fl.textContent="Cần kiểm tra"+(r.ocr?" (OCR)":"");
+    ["so","ngay","tieude"].forEach(k=>{if(!r[k]) tr.querySelector(`[data-k="${k}"]`).parentElement.classList.add("miss")});
     b.appendChild(tr);
   });
   $("empty").style.display=rows.length?"none":"block";
@@ -259,6 +339,7 @@ $("body").addEventListener("input",e=>{
 $("body").addEventListener("click",e=>{
   const a=e.target.dataset.a; if(!a) return;
   const i=[...$("body").children].indexOf(e.target.closest("tr"));
+  if(a==="raw"){$("rawTxt").textContent=(rows[i].file?"File: "+rows[i].file+"\n\n":"")+(rows[i].raw||"(không có dữ liệu)");$("dlg").showModal();return}
   if(a==="del") rows.splice(i,1);
   if(a==="up"&&i>0)[rows[i-1],rows[i]]=[rows[i],rows[i-1]];
   if(a==="dn"&&i<rows.length-1)[rows[i+1],rows[i]]=[rows[i],rows[i+1]];
@@ -266,7 +347,7 @@ $("body").addEventListener("click",e=>{
 });
 $("renum").onclick=()=>{rows.forEach(r=>delete r.pgOverride);render()};
 $("addRow").onclick=()=>{rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:""});render()};
-$("clear").onclick=()=>{if(!rows.length||confirm("Xóa toàn bộ bảng?")){rows=[];render();setStatus("")}};
+$("clear").onclick=()=>{if(!rows.length&&!files.length||confirm("Xóa toàn bộ bảng và danh sách file?")){rows=[];files=[];renderFiles();render();setStatus("")}};
 $("startPage").onchange=()=>{rows.forEach(r=>delete r.pgOverride);render()};
 
 const drop=$("drop"),fi=$("file");
