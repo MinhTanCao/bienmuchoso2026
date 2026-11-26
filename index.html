@@ -26,7 +26,7 @@ button.g:hover{background:#f1f4f6}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7cc4cc;outline-offset:1px}
 #status{font-size:14px;color:var(--mut);min-height:22px}
 .wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
-table{border-collapse:collapse;width:100%;min-width:1100px;font-family:"Times New Roman",Times,serif;font-size:15px}
+table{border-collapse:collapse;width:100%;min-width:1000px;table-layout:fixed;font-family:"Times New Roman",Times,serif;font-size:15px}
 th,td{border:1px solid #444;padding:4px 6px;vertical-align:middle}
 th{background:#f3f5f7;text-align:center;font-weight:700}
 tr.idx td{text-align:center;font-style:italic;background:#fafbfc;padding:2px}
@@ -65,11 +65,12 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
   <div id="status" role="status"></div>
   <div class="wrap">
     <table id="tbl">
+      <colgroup><col style="width:46px"><col style="width:130px"><col style="width:105px"><col><col style="width:190px"><col style="width:72px"><col style="width:60px"><col style="width:85px"><col style="width:72px"><col style="width:120px"><col style="width:96px"></colgroup>
       <thead>
         <tr>
-          <th style="width:48px">Stt</th><th style="width:130px">Số, ký hiệu văn bản</th><th style="width:120px">Ngày tháng văn bản</th>
-          <th>Tên loại và trích yếu</th><th style="width:190px">Tác giả</th><th style="width:70px">Bản gốc/ Bản chính</th>
-          <th style="width:60px">Bản sao</th><th style="width:80px">Độ mật</th><th style="width:80px">Trang số</th><th style="width:130px">Ghi chú</th><th></th>
+          <th>Stt</th><th>Số, ký hiệu văn bản</th><th>Ngày tháng văn bản</th>
+          <th>Tên loại và trích yếu</th><th>Tác giả</th><th>Bản gốc/ Bản chính</th>
+          <th>Bản sao</th><th>Độ mật</th><th>Trang số</th><th>Ghi chú</th><th></th>
         </tr>
         <tr class="idx"><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td></td></tr>
       </thead>
@@ -101,7 +102,7 @@ async function extractItems(page,force){
   let items=[];
   if(!force){
     const tc=await page.getTextContent();
-    items=tc.items.filter(i=>i.str.trim()).map(i=>({t:i.str,x:i.transform[4],y:vp.height-i.transform[5]}));
+    items=tc.items.filter(i=>i.str.trim()).map(i=>({t:i.str.normalize("NFC"),x:i.transform[4],y:vp.height-i.transform[5]}));
   }
   const chars=items.reduce((n,i)=>n+i.t.length,0);
   if(force||chars<40){
@@ -115,7 +116,7 @@ async function extractItems(page,force){
     }
     const r=await ocrWorker.recognize(cv);
     items=[];
-    (r.data.words||[]).forEach(w=>{if(w.text.trim())items.push({t:w.text,x:w.bbox.x0/sc,y:w.bbox.y0/sc})});
+    (r.data.words||[]).forEach(w=>{if(w.text.trim())items.push({t:w.text.normalize("NFC"),x:w.bbox.x0/sc,y:w.bbox.y0/sc})});
     return {items,W:vp.width,ocr:true};
   }
   return {items,W:vp.width,ocr:false};
@@ -129,31 +130,57 @@ function toLines(items,tol=5){
   L.forEach(l=>{l.it.sort((a,b)=>a.x-b.x);l.text=l.it.map(i=>i.t).join(" ").replace(/\s+/g," ").trim()});
   return L.sort((a,b)=>a.y-b.y);
 }
+const ACR=["UBND","HĐND","LHPN","TW","TP","BCH","BTV","UBMTTQ","MTTQ","CHXHCN","VN","TNCS","HCM","TTCP","CP","BGDĐT","BCĐ","ĐCSVN","QĐ","TT","NĐ","VP","HĐ","TAND","VKSND","CA","BCA","BQP","TU","ĐU","CB","CBCC","VC","NLĐ","KH","SNV","SGDĐT","SYT","SKHĐT","STC","STNMT","THPT","THCS","TH","MN","UB"];
+const LOW=["VÀ","CỦA","THỊ","TẠI","VỀ","CHO","VỚI","TRONG","Ở","TỪ","ĐẾN","LÀ","CÁC","NHỮNG"];
+const LOW2=["VÀ","CỦA","THỊ","TẠI","VỀ","VỤ","PHƯỜNG","XÃ","HUYỆN","QUẬN","TỈNH","TRẤN","THÀNH","PHỐ","NHÂN","DÂN","BAN","DỤC","TẠO","ĐỘNG","BINH","TRA","VIÊN","NGHIỆP","THÔN","ẤP","KHU","PHỦ"];
+function nice(s){
+  s=s.replace(/\s+/g," ").trim();
+  if(s!==s.toUpperCase()) return s;
+  return s.split(" ").map((w,i)=>{
+    if(ACR.includes(w)) return w;
+    if(i>0&&LOW2.includes(w)) return w.toLowerCase();
+    return w.charAt(0)+w.slice(1).toLowerCase();
+  }).join(" ");
+}
 function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
   const out={so:"",ngay:"",tieude:"",tacgia:""};
-  let m=full.match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i); if(m) out.so=m[1].replace(/\s+/g,"");
-  m=full.match(/ng[àa]y\s+(\d{1,2})\s+th[áa]ng\s+(\d{1,2})\s+n[ăa]m\s+(\d{4})/i);
-  if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
-  else{m=full.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`}
-  const soIdx=lines.findIndex(l=>/S[ốo]\s*:/i.test(l.text));
-  if(soIdx>0){
-    const left=[];
-    for(let i=0;i<soIdx;i++){
-      const t=lines[i].it.filter(x=>x.x<d.W*0.52).map(x=>x.t).join(" ").trim();
-      if(t&&!/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_\s]+$/i.test(t)) left.push(t);
-    }
-    out.tacgia=left.join(" ").replace(/\s+/g," ").trim();
-  }
+  const head=lines.slice(0,18);
+  const soIdx=head.findIndex(l=>/S[ốo]\s*:/i.test(l.text));
+  // số ký hiệu
+  let m=(soIdx>=0?head[soIdx].text:full).match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i)||full.match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i);
+  if(m) out.so=m[1].replace(/\s+/g,"");
+  // tên loại
   let ti=-1,tp="";
   for(let i=Math.max(soIdx,0);i<lines.length;i++){
-    const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").trim();
+    const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").replace(/\s+/g," ").trim();
     const hit=TYPES.find(k=>t===k||(t.startsWith(k+" ")&&lines[i].it.length<=6));
     if(hit){ti=i;tp=hit;break}
+    if(/^C[ăa]n c[ứu]/i.test(lines[i].text)) break;
   }
+  // ngày ban hành: chỉ tìm ở phần đầu văn bản (trước tên loại / "Căn cứ"), tránh lấy ngày của văn bản được dẫn chiếu
+  let lim=ti>=0?ti+1:Math.min(lines.length,(soIdx>=0?soIdx:0)+8);
+  const topText=lines.slice(0,Math.max(lim,3)).map(l=>l.text).join("\n");
+  m=topText.match(/ng[àa]y\s+(\d{1,2})\s+th[áa]ng\s+(\d{1,2})\s+n[ăa]m\s+(\d{4})/i)||topText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
+  // tác giả: cột trái, các dòng phía trên dòng "Số"; ranh giới cột = vị trí chữ "CỘNG" nếu có
+  if(soIdx>0){
+    let cut=d.W*0.5;
+    for(let i=0;i<soIdx;i++){
+      const c=lines[i].it.find(x=>/^C[ỘO]NG$/i.test(x.t));
+      if(c){cut=c.x-3;break}
+    }
+    const left=[];
+    for(let i=0;i<soIdx;i++){
+      const t=lines[i].it.filter(x=>x.x<cut).map(x=>x.t).join(" ").trim();
+      if(t&&!/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_\s]+$/i.test(t)) left.push(t);
+    }
+    out.tacgia=nice(left.join(" "));
+  }
+  // tên loại + trích yếu
   if(ti>=0){
     const parts=[];
-    const rest=lines[ti].text.replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").trim();
+    const rest=lines[ti].it.map(x=>x.t).join(" ").replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").trim();
     if(rest) parts.push(rest);
     for(let i=ti+1;i<lines.length&&parts.length<4;i++){
       const t=lines[i].text;
@@ -165,7 +192,7 @@ function parse(d){
     out.tieude=cap(tp)+(tr?" "+tr:"");
   } else {
     const v=full.match(/V\/v\s*:?\s*([^\n]+(?:\n[^\n]+)?)/i);
-    if(v) out.tieude="Công văn về việc "+v[1].replace(/\s+/g," ").trim();
+    if(v) out.tieude="Công văn "+v[1].replace(/\s+/g," ").trim();
   }
   return out;
 }
@@ -178,7 +205,7 @@ async function handleFiles(files){
       setStatus("Đang đọc: "+f.name);
       const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
       const d=await extractItems(await pdf.getPage(1),force);
-      rows.push({...parse(d),goc:"x",sao:"",mat:"",pages:pdf.numPages,ghichu:d.ocr?"OCR":"",file:f.name});
+      rows.push({...parse(d),goc:"x",sao:"",mat:"",pages:pdf.numPages,ghichu:"",ocr:d.ocr,file:f.name});
     }catch(e){
       rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:"Lỗi: "+((e&&e.message)||e),file:f.name});
       setStatus("Lỗi khi đọc "+f.name+": "+((e&&e.message)||e));
@@ -218,8 +245,8 @@ function render(){
     const set=(k,v)=>{tr.querySelector(`[data-k="${k}"]`).value=v||""};
     set("so",r.so);set("ngay",r.ngay);set("tieude",r.tieude);set("tacgia",r.tacgia);set("goc",r.goc);set("sao",r.sao);set("mat",r.mat);set("pg",r.pgOverride||rg[i]);set("ghichu",r.ghichu);
     const fl=tr.querySelector(".flag");
-    if(bad) fl.textContent="Cần kiểm tra"+(r.file?" – "+r.file:"");
-    else if(r.file){fl.textContent=r.file;fl.style.color="var(--mut)"}
+    if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"");
+    if(bad) fl.textContent="Cần kiểm tra"+(r.ocr?" (OCR)":"");
     b.appendChild(tr);
   });
   $("empty").style.display=rows.length?"none":"block";
