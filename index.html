@@ -62,6 +62,7 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
   </div>
   <div class="bar">
     <label><input type="checkbox" id="forceOcr"> Luôn dùng OCR</label>
+    <label><input type="checkbox" id="defGoc"> Tự đánh dấu x cột Bản gốc/Bản chính</label>
     <label>Trang bắt đầu <input type="number" id="startPage" value="1" min="1"></label>
     <label>Tác giả <select id="authMode" title="Cách ghi cột Tác giả"><option value="gop">Cơ quan ban hành + chủ quản trực tiếp</option><option value="last">Chỉ cơ quan ban hành</option><option value="all">Tất cả dòng đầu trang</option></select></label>
     <label><input type="checkbox" id="autoSort"> Sắp xếp theo ngày văn bản</label>
@@ -244,7 +245,7 @@ const TQ_LINE=new RegExp("^("+TQ+")\\b");
 const TQ_CUT=new RegExp("\\s+(?:"+TQ+")(?:\\s+[A-ZÀ-Ỹ0-9.,\\-()/]+)*\\s*$");
 function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
-  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",blocks:[],tq:""};
+  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:(($("defGoc")||{}).checked?"x":""),sao:"",mat:"",blocks:[],tq:""};
   const head=lines.slice(0,22);
   const soIdx=head.findIndex(l=>/S[ốoôóòỏ0]\s*[:;.]/i.test(l.text));
   const topAll=head.map(l=>l.text);
@@ -308,7 +309,7 @@ function parse(d){
     if(tr&&isUp(tr)) tr=tr.charAt(0)+tr.slice(1).toLowerCase();
     out.tieude=compose(tp,tr);
   } else if(cv){
-    out.tieude=compose("CÔNG VĂN",vv);
+    out.tieude=vv?compose("CÔNG VĂN",vv):"";
   } else {
     for(let i=Math.max(soIdx,0)+1;i<Math.min(lines.length,Math.max(soIdx,0)+10);i++){
       const tx=lines[i].text.trim();
@@ -358,7 +359,7 @@ async function processEntry(en,force){
     en.status="Lỗi: "+((e&&e.message)||e);
     setStatus("Lỗi khi đọc "+en.name+": "+((e&&e.message)||e));
     console.error(e);
-    if(!rows.some(x=>x.fid===en.id)) rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:en.pages||1,ghichu:"",file:en.name,fid:en.id});
+    if(!rows.some(x=>x.fid===en.id)) rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"",sao:"",mat:"",pages:en.pages||1,ghichu:"",file:en.name,fid:en.id});
   }
   renderFiles();render();
 }
@@ -424,7 +425,7 @@ $("body").addEventListener("click",e=>{
 });
 $("authMode").onchange=recomputeAuthors;
 $("renum").onclick=()=>{rows.forEach(r=>delete r.pgOverride);render()};
-$("addRow").onclick=()=>{rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:""});render()};
+$("addRow").onclick=()=>{rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"",sao:"",mat:"",pages:1,ghichu:""});render()};
 $("clear").onclick=()=>{if(!rows.length&&!files.length||confirm("Xóa toàn bộ bảng và danh sách file?")){rows=[];files=[];renderFiles();render();setStatus("")}};
 $("startPage").onchange=()=>{rows.forEach(r=>delete r.pgOverride);render()};
 
