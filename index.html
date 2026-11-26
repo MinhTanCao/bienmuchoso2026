@@ -63,6 +63,7 @@ details{margin-top:18px;color:var(--mut);font-size:14px}
   <div class="bar">
     <label><input type="checkbox" id="forceOcr"> Luôn dùng OCR</label>
     <label>Trang bắt đầu <input type="number" id="startPage" value="1" min="1"></label>
+    <label>Tác giả <select id="authMode" title="Cách ghi cột Tác giả"><option value="gop">Cơ quan ban hành + chủ quản trực tiếp</option><option value="last">Chỉ cơ quan ban hành</option><option value="all">Tất cả dòng đầu trang</option></select></label>
     <label><input type="checkbox" id="autoSort"> Sắp xếp theo ngày văn bản</label>
     <span style="flex:1"></span>
     <button class="g" id="addRow">Thêm dòng trống</button>
@@ -175,7 +176,7 @@ function toLines(items,tol=5){
 }
 const ACR=["UBND","HĐND","LHPN","TW","TP","BCH","BTV","UBMTTQ","MTTQ","CHXHCN","VN","TNCS","HCM","TTCP","CP","BGDĐT","BCĐ","ĐCSVN","QĐ","TT","NĐ","VP","HĐ","TAND","VKSND","CA","BCA","BQP","TU","ĐU","CB","CBCC","VC","NLĐ","KH","SNV","SGDĐT","SYT","SKHĐT","STC","STNMT","THPT","THCS","TH","MN","UB"];
 const LOW=["VÀ","CỦA","THỊ","TẠI","VỀ","CHO","VỚI","TRONG","Ở","TỪ","ĐẾN","LÀ","CÁC","NHỮNG"];
-const LOW2=["VÀ","CỦA","THỊ","TẠI","VỀ","VỤ","PHƯỜNG","XÃ","HUYỆN","QUẬN","TỈNH","TRẤN","THÀNH","PHỐ","NHÂN","DÂN","BAN","DỤC","TẠO","ĐỘNG","BINH","TRA","VIÊN","NGHIỆP","THÔN","ẤP","KHU","PHỦ"];
+const LOW2=["VÀ","CỦA","THỊ","TẠI","VỀ","VỤ","PHƯỜNG","XÃ","HUYỆN","QUẬN","TỈNH","TRẤN","THÀNH","PHỐ","NHÂN","DÂN","BAN","DỤC","TẠO","ĐỘNG","BINH","TRA","VIÊN","NGHIỆP","THÔN","ẤP","KHU","PHỦ","PHÒNG","ĐỒNG"];
 function nice(s){
   s=s.replace(/\s+/g," ").trim();
   if(s!==s.toUpperCase()) return s;
@@ -185,16 +186,58 @@ function nice(s){
     return w.charAt(0)+w.slice(1).toLowerCase();
   }).join(" ");
 }
+const CONN=/(\bVÀ|\bCỦA|\bTHỊ|\bTẠI|\bVỀ|\bĐỂ|\bVỚI|,)$/i;
+const isUp=t=>t===t.toUpperCase()&&/[A-ZÀ-Ỹ]{2}/.test(t);
+const lowFirst=t=>t.charAt(0).toLowerCase()+t.slice(1);
+function colCut(lines,W){
+  for(let i=0;i<Math.min(lines.length,14);i++){const c=lines[i].it.find(x=>/^C[ỘO]NG$/i.test(x.t));if(c) return c.x-3}
+  return W*0.5;
+}
+// Các khối tên cơ quan ở góc trái trên cùng (trên dòng "Số:"), gộp dòng bị xuống hàng
+function authorBlocks(lines,soIdx,cut){
+  const raw=[];
+  for(let i=0;i<soIdx;i++){
+    const t=lines[i].it.filter(x=>x.x<cut).map(x=>x.t).join(" ").replace(/\s+/g," ").trim();
+    if(!t||/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_.\s]+$/i.test(t)||/^(MẬT|TỐI MẬT|TUYỆT MẬT)$/i.test(t)||/^(SAO Y|SAO LỤC|TRÍCH SAO)/i.test(t)) continue;
+    raw.push(t);
+  }
+  const blocks=[];
+  raw.forEach(t=>{const l=blocks[blocks.length-1];
+    const unit=/^(PHƯỜNG|XÃ|HUYỆN|QUẬN|TỈNH|THÀNH PHỐ|THỊ TRẤN|THỊ XÃ|ĐẶC KHU)\b/i.test(t)&&/(NHÂN DÂN|ỦY BAN|HỘI ĐỒNG)$/i.test(l||"");
+    if(l&&(CONN.test(l)||/^[a-zà-ỹ]/.test(t)||unit)) blocks[blocks.length-1]=l+" "+t; else blocks.push(t)});
+  return blocks;
+}
+function authorFrom(blocks,mode){
+  if(!blocks||!blocks.length) return "";
+  const n=blocks.length,last=blocks[n-1];
+  if(mode==="last") return nice(last);
+  if(mode==="all") return nice(blocks.join(" "));
+  if(n>=2&&last.split(" ").length<=3) return nice(last)+" "+nice(blocks[n-2]);
+  return nice(last);
+}
+function compose(tp,tr){
+  const base=cap(tp);
+  if(!tr) return base;
+  tr=tr.replace(/^V\/v\s*:?\s*/i,"Về việc ").replace(/\s+/g," ").trim();
+  if(/^(Về việc|Ban hành|Phê duyệt)\b/i.test(tr)) tr=lowFirst(tr);
+  return base+" "+tr;
+}
 function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
-  const out={so:"",ngay:"",tieude:"",tacgia:""};
-  const head=lines.slice(0,18);
+  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",blocks:[]};
+  const head=lines.slice(0,22);
   const soIdx=head.findIndex(l=>/S[ốoôóòỏ0]\s*[:;.]/i.test(l.text));
-  // số ký hiệu
+  const topAll=head.map(l=>l.text);
+  // độ mật, bản sao
+  const mt=topAll.find(t=>/^(TUYỆT MẬT|TỐI MẬT|MẬT)$/i.test(t.trim()));
+  if(mt) out.mat=({"TUYỆT MẬT":"Tuyệt mật","TỐI MẬT":"Tối mật","MẬT":"Mật"})[mt.trim().toUpperCase()]||"";
+  if(topAll.some(t=>/^(SAO Y|SAO LỤC|TRÍCH SAO)/i.test(t.trim()))){out.sao="x";out.goc=""}
+  // số, ký hiệu
   const SOR=/S[ốoôóòỏ0]\s*[:;.]?\s*(\d+(?:\s*\/\s*[\w.ĐđÀ-ỹ]+)+(?:\s*-\s*[\w.ĐđÀ-ỹ]+)*|\d+\s*-\s*[\w.ĐđÀ-ỹ]+)/i;
   let m=(soIdx>=0?head[soIdx].text:full).match(SOR)||full.match(SOR);
   if(m) out.so=m[1].replace(/\s+/g,"");
-  // tên loại
+  const cut=colCut(lines,d.W);
+  // tên loại văn bản (có tên loại: chỉ thị, quy chế, thông báo, kế hoạch, báo cáo, tờ trình, quyết định, nghị quyết...)
   let ti=-1,tp="";
   for(let i=Math.max(soIdx,0);i<lines.length;i++){
     const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").replace(/\s+/g," ").trim();
@@ -202,49 +245,59 @@ function parse(d){
     if(hit){ti=i;tp=hit;break}
     if(/^C[ăa]n c[ứu]/i.test(lines[i].text)) break;
   }
+  // công văn: không có tên loại, có "V/v ..." ở dưới số ký hiệu và "Kính gửi"
+  let cv=false,vv="";
   if(ti<0){
-    for(let i=Math.max(soIdx,0)+1;i<Math.min(lines.length,soIdx+10);i++){
-      const tx=lines[i].text.trim();
-      if(tx&&tx===tx.toUpperCase()&&/[A-ZÀ-Ỹ]{3}/.test(tx)&&tx.split(" ").length<=4&&!/C[ỘO]NG|K[ÍI]NH G[ỬU]I|S[ỐO]\s*:|^[-–—_\s]+$/.test(tx)&&!lines[i].it.some(x=>x.x<d.W*0.3&&i<=soIdx+2&&lines[i].it[0].x<d.W*0.3&&tx.length>12)){ti=i;tp=tx;break}
+    const leftTxt=l=>l.it.filter(x=>x.x<cut).map(x=>x.t).join(" ").trim();
+    for(let j=Math.max(soIdx,0);j<Math.min(lines.length,Math.max(soIdx,0)+7);j++){
+      const t=leftTxt(lines[j]);
+      if(/^(V\/v|V\/V|V\.v|Về việc)\b/i.test(t)){
+        const parts=[t];
+        for(let k=j+1;k<Math.min(lines.length,j+3);k++){
+          const u=leftTxt(lines[k]);
+          if(!u||/^K[íi]nh g[ửu]i/i.test(u)||lines[k].y-lines[k-1].y>26) break;
+          parts.push(u);
+        }
+        vv=parts.join(" ").replace(/\s+/g," ");cv=true;break;
+      }
     }
+    if(!cv&&lines.some(l=>/^K[íi]nh g[ửu]i\s*:?/i.test(l.text))) cv=true;
   }
-  // ngày ban hành: chỉ tìm ở phần đầu văn bản (trước tên loại / "Căn cứ"), tránh lấy ngày của văn bản được dẫn chiếu
-  let lim=ti>=0?ti+1:Math.min(lines.length,(soIdx>=0?soIdx:0)+8);
+  // ngày ban hành: chỉ tìm ở phần đầu (trước tên loại / "Căn cứ"), tránh lấy ngày của văn bản được dẫn chiếu
+  const lim=ti>=0?ti+1:Math.min(lines.length,(soIdx>=0?soIdx:0)+8);
   const topText=lines.slice(0,Math.max(lim,3)).map(l=>l.text).join("\n");
   m=topText.match(/ng[àaáảã]y\s*(\d{1,2})\s*th[áaàảã]ng\s*(\d{1,2})\s*n[ăaâằắ]m\s*(\d{4})/i)||topText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
-  // tác giả: cột trái, các dòng phía trên dòng "Số"; ranh giới cột = vị trí chữ "CỘNG" nếu có
-  if(soIdx>0){
-    let cut=d.W*0.5;
-    for(let i=0;i<soIdx;i++){
-      const c=lines[i].it.find(x=>/^C[ỘO]NG$/i.test(x.t));
-      if(c){cut=c.x-3;break}
-    }
-    const left=[];
-    for(let i=0;i<soIdx;i++){
-      const t=lines[i].it.filter(x=>x.x<cut).map(x=>x.t).join(" ").trim();
-      if(t&&!/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_\s]+$/i.test(t)) left.push(t);
-    }
-    out.tacgia=nice(left.join(" "));
-  }
+  // tác giả
+  if(soIdx>0){out.blocks=authorBlocks(lines,soIdx,cut);out.tacgia=authorFrom(out.blocks,($("authMode")||{}).value||"gop")}
   // tên loại + trích yếu
   if(ti>=0){
     const parts=[];
-    const rest=lines[ti].it.map(x=>x.t).join(" ").replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").trim();
+    const rest=lines[ti].it.map(x=>x.t).join(" ").replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").replace(/^[\s:.\-–]+/,"").trim();
     if(rest) parts.push(rest);
     for(let i=ti+1;i<lines.length&&parts.length<4;i++){
-      const t=lines[i].text;
-      if(/^(K[íi]nh g[ửu]i|C[ăa]n c[ứu]|Th[ựu]c hi[ệe]n|[-–—_]{3,})/i.test(t)) break;
-      parts.push(t.replace(/^V\/v\s*:?\s*/i,""));
+      const t=lines[i].text.trim();
+      if(/^(K[íi]nh g[ửu]i|C[ăa]n c[ứu]|Th[ựu]c hi[ệe]n|[-–—_]{3,}|[ĐD]i[ềe]u\s*\d)/i.test(t)) break;
+      if(parts.length&&!isUp(parts[0])&&isUp(t)) break; // dòng in hoa = thẩm quyền ban hành / QUYẾT ĐỊNH: / QUYẾT NGHỊ:
+      parts.push(t);
       if(/[.;]$/.test(t)) break;
     }
-    const tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").trim();
-    out.tieude=cap(tp)+(tr?" "+tr:"");
+    const tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").replace(/^\((.*)\)$/,"$1").trim();
+    out.tieude=compose(tp,tr);
+  } else if(cv){
+    out.tieude=compose("CÔNG VĂN",vv);
   } else {
-    const v=full.match(/V\/v\s*:?\s*([^\n]+(?:\n[^\n]+)?)/i);
-    if(v) out.tieude="Công văn "+v[1].replace(/\s+/g," ").trim();
+    for(let i=Math.max(soIdx,0)+1;i<Math.min(lines.length,Math.max(soIdx,0)+10);i++){
+      const tx=lines[i].text.trim();
+      if(tx&&isUp(tx)&&tx.split(" ").length<=4&&!/C[ỘO]NG|K[ÍI]NH G[ỬU]I|S[ỐO]\s*:/.test(tx)){out.tieude=cap(tx);break}
+    }
   }
   return out;
+}
+function recomputeAuthors(){
+  const mode=$("authMode").value;
+  rows.forEach(r=>{if(r.blocks&&!r.authEdited) r.tacgia=authorFrom(r.blocks,mode)});
+  render();
 }
 
 let files=[],fid=0;
@@ -276,7 +329,7 @@ async function processEntry(en,force){
     const r={...parse(d),raw:toLines(d.items).slice(0,40).map(l=>l.text).join("\n"),pages:pdf.numPages,ocr:d.ocr,file:en.name,fid:en.id};
     const i=rows.findIndex(x=>x.fid===en.id);
     if(i>=0) rows[i]={...rows[i],...r};
-    else rows.push({...r,goc:"x",sao:"",mat:"",ghichu:""});
+    else rows.push({ghichu:"",...r});
     en.status="Đã đọc";
   }catch(e){
     en.status="Lỗi: "+((e&&e.message)||e);
@@ -335,6 +388,7 @@ $("body").addEventListener("input",e=>{
   const i=[...$("body").children].indexOf(e.target.closest("tr")),k=e.target.dataset.k;
   if(i<0||!k) return;
   if(k==="pg") rows[i].pgOverride=e.target.value; else rows[i][k]=e.target.value;
+  if(k==="tacgia") rows[i].authEdited=true;
 });
 $("body").addEventListener("click",e=>{
   const a=e.target.dataset.a; if(!a) return;
@@ -345,6 +399,7 @@ $("body").addEventListener("click",e=>{
   if(a==="dn"&&i<rows.length-1)[rows[i+1],rows[i]]=[rows[i],rows[i+1]];
   render();
 });
+$("authMode").onchange=recomputeAuthors;
 $("renum").onclick=()=>{rows.forEach(r=>delete r.pgOverride);render()};
 $("addRow").onclick=()=>{rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:""});render()};
 $("clear").onclick=()=>{if(!rows.length&&!files.length||confirm("Xóa toàn bộ bảng và danh sách file?")){rows=[];files=[];renderFiles();render();setStatus("")}};
