@@ -219,12 +219,15 @@ function compose(tp,tr){
   const base=cap(tp);
   if(!tr) return base;
   tr=tr.replace(/^V\/v\s*:?\s*/i,"Về việc ").replace(/\s+/g," ").trim();
-  if(/^(Về việc|Ban hành|Phê duyệt)\b/i.test(tr)) tr=lowFirst(tr);
   return base+" "+tr;
 }
+// Chức vụ / tên cơ quan ghi ở dòng "THẨM QUYỀN BAN HÀNH" (in hoa), nằm ngay dưới trích yếu của quyết định, nghị quyết
+const TQ="BỘ TRƯỞNG|PHÓ THỦ TƯỚNG|THỦ TƯỚNG|CHỦ TỊCH|PHÓ CHỦ TỊCH|TỔNG GIÁM ĐỐC|PHÓ GIÁM ĐỐC|GIÁM ĐỐC|HIỆU TRƯỞNG|THỦ TRƯỞNG|TỔNG CỤC TRƯỞNG|CỤC TRƯỞNG|VỤ TRƯỞNG|CHÁNH VĂN PHÒNG|CHÁNH ÁN|VIỆN TRƯỞNG|TRƯỞNG BAN|TRƯỞNG PHÒNG|BÍ THƯ|TỔNG BÍ THƯ|CHỦ NHIỆM|CHỦ TỊCH NƯỚC|HỘI ĐỒNG|ỦY BAN|BAN THƯỜNG VỤ|BAN CHẤP HÀNH|ĐOÀN CHỦ TỊCH|BAN BÍ THƯ|BAN GIÁM ĐỐC|BAN GIÁM HIỆU";
+const TQ_LINE=new RegExp("^("+TQ+")\\b");
+const TQ_CUT=new RegExp("\\s+(?:"+TQ+")(?:\\s+[A-ZÀ-Ỹ0-9.,\\-()/]+)*\\s*$");
 function parse(d){
   const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
-  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",blocks:[]};
+  const out={so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",blocks:[],tq:""};
   const head=lines.slice(0,22);
   const soIdx=head.findIndex(l=>/S[ốoôóòỏ0]\s*[:;.]/i.test(l.text));
   const topAll=head.map(l=>l.text);
@@ -275,14 +278,16 @@ function parse(d){
     const parts=[];
     const rest=lines[ti].it.map(x=>x.t).join(" ").replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").replace(/^[\s:.\-–]+/,"").trim();
     if(rest) parts.push(rest);
-    for(let i=ti+1;i<lines.length&&parts.length<4;i++){
+    for(let i=ti+1;i<lines.length&&parts.length<6;i++){
       const t=lines[i].text.trim();
       if(/^(K[íi]nh g[ửu]i|C[ăa]n c[ứu]|Th[ựu]c hi[ệe]n|[-–—_]{3,}|[ĐD]i[ềe]u\s*\d)/i.test(t)) break;
-      if(parts.length&&!isUp(parts[0])&&isUp(t)) break; // dòng in hoa = thẩm quyền ban hành / QUYẾT ĐỊNH: / QUYẾT NGHỊ:
+      const upFirst=parts.length&&isUp(parts[0]);
+      if(parts.length&&!upFirst&&(isUp(t)||TQ_LINE.test(t))){out.tq=t;break} // thẩm quyền ban hành, QUYẾT ĐỊNH:, QUYẾT NGHỊ:
       parts.push(t);
       if(/[.;]$/.test(t)) break;
     }
-    const tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").replace(/^\((.*)\)$/,"$1").trim();
+    let tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").replace(/^\((.*)\)$/,"$1").trim();
+    if(parts.length&&!isUp(parts[0])){const c=tr.match(TQ_CUT);if(c){out.tq=c[0].trim();tr=tr.slice(0,c.index).trim()}}
     out.tieude=compose(tp,tr);
   } else if(cv){
     out.tieude=compose("CÔNG VĂN",vv);
@@ -378,7 +383,7 @@ function render(){
       <td class="act"><button title="Lên" data-a="up">↑</button> <button title="Xuống" data-a="dn">↓</button> <button title="Xem chữ đọc được" data-a="raw">Xem</button> <button title="Xóa dòng" data-a="del">✕</button></td>`;
     const set=(k,v)=>{tr.querySelector(`[data-k="${k}"]`).value=v||""};
     set("so",r.so);set("ngay",r.ngay);set("tieude",r.tieude);set("tacgia",r.tacgia);set("goc",r.goc);set("sao",r.sao);set("mat",r.mat);set("pg",r.pgOverride||rg[i]);set("ghichu",r.ghichu);
-    if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"");
+    if(r.file) tr.title=r.file+(r.ocr?" (nhận dạng OCR)":"")+(r.tq?"\nThẩm quyền ban hành: "+r.tq:"");
     ["so","ngay","tieude"].forEach(k=>{if(!r[k]) tr.querySelector(`[data-k="${k}"]`).parentElement.classList.add("miss")});
     b.appendChild(tr);
   });
