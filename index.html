@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biên mục văn bản từ PDF</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eceff2;--card:#fff;--ink:#1c2630;--mut:#5d6b78;--line:#b9c2cb;--acc:#0e6670;--acc2:#0a4d55;--warn:#fff3d6;--err:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Be Vietnam Pro",system-ui,sans-serif}
+header{padding:20px 28px 8px}
+h1{margin:0;font-size:22px}
+header p{margin:4px 0 0;color:var(--mut);max-width:80ch}
+main{padding:12px 28px 40px}
+.drop{border:2px dashed var(--acc);background:var(--card);border-radius:10px;padding:22px;text-align:center;cursor:pointer}
+.drop.on{background:#e3f1f2}
+.drop b{color:var(--acc2)}
+.bar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:14px 0}
+.bar label{font-size:14px;color:var(--mut);display:flex;gap:6px;align-items:center}
+.bar input[type=number]{width:70px;padding:5px;border:1px solid var(--line);border-radius:6px}
+button{font:inherit;border:0;border-radius:7px;padding:8px 14px;background:var(--acc);color:#fff;cursor:pointer}
+button:hover{background:var(--acc2)}
+button.g{background:#fff;color:var(--ink);border:1px solid var(--line)}
+button.g:hover{background:#f1f4f6}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7cc4cc;outline-offset:1px}
+#status{font-size:14px;color:var(--mut);min-height:22px}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:1100px;font-family:"Times New Roman",Times,serif;font-size:15px}
+th,td{border:1px solid #444;padding:4px 6px;vertical-align:middle}
+th{background:#f3f5f7;text-align:center;font-weight:700}
+tr.idx td{text-align:center;font-style:italic;background:#fafbfc;padding:2px}
+td.c{text-align:center}
+td input,td textarea,td select{width:100%;border:0;background:transparent;font:inherit;padding:3px;resize:vertical}
+td textarea{min-height:48px}
+tr.chk td{background:var(--warn)}
+td.act{white-space:nowrap;width:1%;border:0;background:var(--card)}
+td.act button{padding:3px 8px;background:#fff;color:var(--ink);border:1px solid var(--line)}
+.flag{color:var(--err);font:12px "Be Vietnam Pro",sans-serif}
+.empty{padding:26px;text-align:center;color:var(--mut)}
+details{margin-top:18px;color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Biên mục văn bản từ PDF</h1>
+  <p>Tải các file PDF văn bản hành chính lên, hệ thống tự đọc số ký hiệu, ngày tháng, trích yếu, tác giả và điền vào bảng mục lục. Mọi thứ chạy ngay trong trình duyệt, file PDF không bị gửi đi đâu.</p>
+</header>
+<main>
+  <div class="drop" id="drop" tabindex="0">
+    <b>Chọn hoặc kéo thả các file PDF vào đây</b><br><span style="color:var(--mut)">PDF có lớp chữ được đọc ngay; PDF scan sẽ được nhận dạng (OCR) tiếng Việt</span>
+    <input id="file" type="file" accept="application/pdf" multiple hidden>
+  </div>
+  <div class="bar">
+    <label><input type="checkbox" id="forceOcr"> Luôn dùng OCR</label>
+    <label>Trang bắt đầu <input type="number" id="startPage" value="1" min="1"></label>
+    <label><input type="checkbox" id="autoSort"> Sắp xếp theo ngày văn bản</label>
+    <span style="flex:1"></span>
+    <button class="g" id="addRow">Thêm dòng trống</button>
+    <button class="g" id="renum">Tính lại số trang</button>
+    <button id="xlsx">Xuất Excel</button>
+    <button class="g" id="csv">Xuất CSV</button>
+    <button class="g" id="clear">Xóa hết</button>
+  </div>
+  <div id="status" role="status"></div>
+  <div class="wrap">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th style="width:48px">Stt</th><th style="width:130px">Số, ký hiệu văn bản</th><th style="width:120px">Ngày tháng văn bản</th>
+          <th>Tên loại và trích yếu</th><th style="width:190px">Tác giả</th><th style="width:70px">Bản gốc/ Bản chính</th>
+          <th style="width:60px">Bản sao</th><th style="width:80px">Độ mật</th><th style="width:80px">Trang số</th><th style="width:130px">Ghi chú</th><th></th>
+        </tr>
+        <tr class="idx"><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td></td></tr>
+      </thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div class="empty" id="empty">Chưa có văn bản nào. Tải PDF lên để bắt đầu.</div>
+  </div>
+  <details>
+    <summary>Lưu ý khi dùng</summary>
+    <p>Kết quả nhận dạng là gợi ý, nhất là với bản scan mờ. Các dòng nền vàng là dòng thiếu số, ngày hoặc trích yếu, cần kiểm tra lại. Cột “Trang số” tính theo thứ tự các dòng trong bảng, bắt đầu từ số trang bạn nhập; bấm “Tính lại số trang” sau khi đổi thứ tự hoặc sửa số trang của file.</p>
+  </details>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const $=id=>document.getElementById(id);
+let rows=[];
+let ocrWorker=null;
+
+const TYPES=["BÁO CÁO","QUYẾT ĐỊNH","KẾ HOẠCH","THÔNG BÁO","TỜ TRÌNH","BIÊN BẢN","CHƯƠNG TRÌNH","NGHỊ QUYẾT","HƯỚNG DẪN","GIẤY MỜI","THƯ MỜI","QUY CHẾ","QUY ĐỊNH","CÔNG ĐIỆN","GIẤY GIỚI THIỆU","GIẤY ỦY QUYỀN","THÔNG TƯ","NGHỊ ĐỊNH","CHỈ THỊ","KẾT LUẬN","ĐỀ ÁN","DỰ ÁN","PHƯƠNG ÁN","DANH SÁCH","GIẤY CHỨNG NHẬN","HỢP ĐỒNG","BẢN GHI NHỚ","THỎA THUẬN"];
+const cap=s=>s.charAt(0)+s.slice(1).toLowerCase();
+function setStatus(t){$("status").textContent=t}
+
+async function extractItems(page,force){
+  const vp=page.getViewport({scale:1});
+  let items=[];
+  if(!force){
+    const tc=await page.getTextContent();
+    items=tc.items.filter(i=>i.str.trim()).map(i=>({t:i.str,x:i.transform[4],y:vp.height-i.transform[5]}));
+  }
+  const chars=items.reduce((n,i)=>n+i.t.length,0);
+  if(force||chars<40){
+    setStatus("Đang nhận dạng chữ (OCR). Lần đầu có thể mất vài chục giây để tải dữ liệu tiếng Việt…");
+    const sc=2.2, v=page.getViewport({scale:sc});
+    const cv=document.createElement("canvas");cv.width=v.width;cv.height=v.height;
+    await page.render({canvasContext:cv.getContext("2d"),viewport:v}).promise;
+    if(!ocrWorker){
+      try{ocrWorker=await Tesseract.createWorker("vie")}
+      catch(e){throw new Error("OCR không chạy được ở khung xem trước (bị chặn Web Worker). Hãy tải file về và mở trên máy hoặc máy chủ nội bộ. Chi tiết: "+((e&&e.message)||e))}
+    }
+    const r=await ocrWorker.recognize(cv);
+    items=[];
+    (r.data.words||[]).forEach(w=>{if(w.text.trim())items.push({t:w.text,x:w.bbox.x0/sc,y:w.bbox.y0/sc})});
+    return {items,W:vp.width,ocr:true};
+  }
+  return {items,W:vp.width,ocr:false};
+}
+function toLines(items,tol=5){
+  const s=[...items].sort((a,b)=>a.y-b.y||a.x-b.x), L=[];
+  s.forEach(i=>{
+    const l=L.find(l=>Math.abs(l.y-i.y)<=tol);
+    if(l){l.it.push(i)}else L.push({y:i.y,it:[i]});
+  });
+  L.forEach(l=>{l.it.sort((a,b)=>a.x-b.x);l.text=l.it.map(i=>i.t).join(" ").replace(/\s+/g," ").trim()});
+  return L.sort((a,b)=>a.y-b.y);
+}
+function parse(d){
+  const lines=toLines(d.items), full=lines.map(l=>l.text).join("\n");
+  const out={so:"",ngay:"",tieude:"",tacgia:""};
+  let m=full.match(/S[ốo]\s*:?\s*(\d+\s*[\/\-][^\s,;]+)/i); if(m) out.so=m[1].replace(/\s+/g,"");
+  m=full.match(/ng[àa]y\s+(\d{1,2})\s+th[áa]ng\s+(\d{1,2})\s+n[ăa]m\s+(\d{4})/i);
+  if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`;
+  else{m=full.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) out.ngay=`${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[3]}`}
+  const soIdx=lines.findIndex(l=>/S[ốo]\s*:/i.test(l.text));
+  if(soIdx>0){
+    const left=[];
+    for(let i=0;i<soIdx;i++){
+      const t=lines[i].it.filter(x=>x.x<d.W*0.52).map(x=>x.t).join(" ").trim();
+      if(t&&!/C[ỘO]NG H[ÒO]A|[ĐD][ộo]c l[ậa]p|^[-–—_\s]+$/i.test(t)) left.push(t);
+    }
+    out.tacgia=left.join(" ").replace(/\s+/g," ").trim();
+  }
+  let ti=-1,tp="";
+  for(let i=Math.max(soIdx,0);i<lines.length;i++){
+    const t=lines[i].text.toUpperCase().replace(/[^A-ZÀ-Ỹ ]/g,"").trim();
+    const hit=TYPES.find(k=>t===k||(t.startsWith(k+" ")&&lines[i].it.length<=6));
+    if(hit){ti=i;tp=hit;break}
+  }
+  if(ti>=0){
+    const parts=[];
+    const rest=lines[ti].text.replace(new RegExp("^"+tp.split(" ").join("\\s+"),"i"),"").trim();
+    if(rest) parts.push(rest);
+    for(let i=ti+1;i<lines.length&&parts.length<4;i++){
+      const t=lines[i].text;
+      if(/^(K[íi]nh g[ửu]i|C[ăa]n c[ứu]|Th[ựu]c hi[ệe]n|[-–—_]{3,})/i.test(t)) break;
+      parts.push(t.replace(/^V\/v\s*:?\s*/i,""));
+      if(/[.;]$/.test(t)) break;
+    }
+    const tr=parts.join(" ").replace(/\s+/g," ").replace(/^[-–—]+|[-–—]+$/g,"").trim();
+    out.tieude=cap(tp)+(tr?" "+tr:"");
+  } else {
+    const v=full.match(/V\/v\s*:?\s*([^\n]+(?:\n[^\n]+)?)/i);
+    if(v) out.tieude="Công văn về việc "+v[1].replace(/\s+/g," ").trim();
+  }
+  return out;
+}
+
+async function handleFiles(files){
+  const force=$("forceOcr").checked;
+  for(const f of files){
+    if(!/\.pdf$/i.test(f.name)&&f.type!=="application/pdf") continue;
+    try{
+      setStatus("Đang đọc: "+f.name);
+      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+      const d=await extractItems(await pdf.getPage(1),force);
+      rows.push({...parse(d),goc:"x",sao:"",mat:"",pages:pdf.numPages,ghichu:d.ocr?"OCR":"",file:f.name});
+    }catch(e){
+      rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:"Lỗi: "+((e&&e.message)||e),file:f.name});
+      setStatus("Lỗi khi đọc "+f.name+": "+((e&&e.message)||e));
+      console.error(e);
+    }
+    render();
+  }
+  if($("autoSort").checked) sortByDate();
+  render();
+  setStatus("Đã xử lý xong "+files.length+" file. Hãy kiểm tra các dòng nền vàng.");
+}
+
+function dateKey(s){const m=(s||"").match(/(\d+)\/(\d+)\/(\d+)/);return m?+m[3]*10000+ +m[2]*100+ +m[1]:99999999}
+function sortByDate(){rows.sort((a,b)=>dateKey(a.ngay)-dateKey(b.ngay))}
+function ranges(){
+  let p=Math.max(1,parseInt($("startPage").value)||1);
+  return rows.map(r=>{const n=Math.max(1,parseInt(r.pages)||1);const s=p;p+=n;return n===1?""+s:s+"-"+(p-1)});
+}
+function render(){
+  const rg=ranges(), b=$("body");
+  b.innerHTML="";
+  rows.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    const bad=!r.so||!r.ngay||!r.tieude;
+    if(bad) tr.className="chk";
+    tr.innerHTML=`<td class="c">${String(i+1).padStart(2,"0")}</td>
+      <td><input data-k="so"></td>
+      <td class="c"><input data-k="ngay" style="text-align:center"></td>
+      <td><textarea data-k="tieude" rows="2"></textarea></td>
+      <td class="c"><textarea data-k="tacgia" rows="2" style="text-align:center"></textarea></td>
+      <td class="c"><input data-k="goc" style="text-align:center"></td>
+      <td class="c"><input data-k="sao" style="text-align:center"></td>
+      <td class="c"><select data-k="mat"><option></option><option>Mật</option><option>Tối mật</option><option>Tuyệt mật</option></select></td>
+      <td class="c"><input data-k="pg" style="text-align:center"></td>
+      <td><textarea data-k="ghichu" rows="2"></textarea><div class="flag"></div></td>
+      <td class="act"><button title="Lên" data-a="up">↑</button> <button title="Xuống" data-a="dn">↓</button> <button title="Xóa dòng" data-a="del">✕</button></td>`;
+    const set=(k,v)=>{tr.querySelector(`[data-k="${k}"]`).value=v||""};
+    set("so",r.so);set("ngay",r.ngay);set("tieude",r.tieude);set("tacgia",r.tacgia);set("goc",r.goc);set("sao",r.sao);set("mat",r.mat);set("pg",r.pgOverride||rg[i]);set("ghichu",r.ghichu);
+    const fl=tr.querySelector(".flag");
+    if(bad) fl.textContent="Cần kiểm tra"+(r.file?" – "+r.file:"");
+    else if(r.file){fl.textContent=r.file;fl.style.color="var(--mut)"}
+    b.appendChild(tr);
+  });
+  $("empty").style.display=rows.length?"none":"block";
+}
+$("body").addEventListener("input",e=>{
+  const i=[...$("body").children].indexOf(e.target.closest("tr")),k=e.target.dataset.k;
+  if(i<0||!k) return;
+  if(k==="pg") rows[i].pgOverride=e.target.value; else rows[i][k]=e.target.value;
+});
+$("body").addEventListener("click",e=>{
+  const a=e.target.dataset.a; if(!a) return;
+  const i=[...$("body").children].indexOf(e.target.closest("tr"));
+  if(a==="del") rows.splice(i,1);
+  if(a==="up"&&i>0)[rows[i-1],rows[i]]=[rows[i],rows[i-1]];
+  if(a==="dn"&&i<rows.length-1)[rows[i+1],rows[i]]=[rows[i],rows[i+1]];
+  render();
+});
+$("renum").onclick=()=>{rows.forEach(r=>delete r.pgOverride);render()};
+$("addRow").onclick=()=>{rows.push({so:"",ngay:"",tieude:"",tacgia:"",goc:"x",sao:"",mat:"",pages:1,ghichu:""});render()};
+$("clear").onclick=()=>{if(!rows.length||confirm("Xóa toàn bộ bảng?")){rows=[];render();setStatus("")}};
+$("startPage").onchange=()=>{rows.forEach(r=>delete r.pgOverride);render()};
+
+const drop=$("drop"),fi=$("file");
+drop.onclick=()=>fi.click();
+drop.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fi.click()}};
+fi.onchange=()=>{handleFiles([...fi.files]);fi.value=""};
+["dragover","dragenter"].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.add("on")}));
+["dragleave","drop"].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.remove("on")}));
+drop.addEventListener("drop",e=>handleFiles([...e.dataTransfer.files]));
+
+function matrix(){
+  const rg=ranges();
+  const head=["Stt","Số, ký hiệu văn bản","Ngày tháng văn bản","Tên loại và trích yếu","Tác giả","Bản gốc/Bản chính","Bản sao","Độ mật","Trang số","Ghi chú"];
+  return [head,head.map((_,i)=>i+1),...rows.map((r,i)=>[String(i+1).padStart(2,"0"),r.so,r.ngay,r.tieude,r.tacgia,r.goc,r.sao,r.mat,r.pgOverride||rg[i],r.ghichu==="OCR"?"":r.ghichu])];
+}
+$("xlsx").onclick=()=>{
+  if(!rows.length) return setStatus("Bảng đang trống.");
+  const ws=XLSX.utils.aoa_to_sheet(matrix());
+  ws["!cols"]=[6,18,14,60,34,12,9,10,10,18].map(w=>({wch:w}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Mục lục văn bản");
+  XLSX.writeFile(wb,"muc-luc-van-ban.xlsx");
+};
+$("csv").onclick=()=>{
+  if(!rows.length) return setStatus("Bảng đang trống.");
+  const csv=matrix().map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
+  a.download="muc-luc-van-ban.csv";a.click();
+};
+render();
+</script>
+</body>
+</html>
